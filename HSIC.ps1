@@ -82,8 +82,11 @@ Add-Content -Path $filename -Value "`r`n###### INSTALLED SOFTWARE + VERSION ####
 Get-WmiObject -Class Win32_Product | Select Name, Version | Out-String -Width 1000 | Add-Content -Path $filename
 
 # User status
-Write-Host "`r`n# Getting user information "
+Write-Host "`r`n# Getting user information"
 Add-Content -Path $filename -Value "`r`n###### USER INFORMATION ######"
 Get-LocalUser | Select Name, Enabled | Out-String -Width 1000 | Add-Content -Path $filename
 Get-LocalGroupMember -Group "Administrators" | Out-String -Width 1000 | Add-Content -Path $filename
 [Security.Principal.WindowsIdentity]::GetCurrent().Name | Out-String -Width 1000 | Add-Content -Path $filename
+
+# Finished
+Write-Host "`r`n# Finished"
