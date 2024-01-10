@@ -1,8 +1,9 @@
-﻿##########################################################################################################
+##########################################################################################################
 ## HSIC: Host-based Security Info Collector
+## Version: 2.0 (20240110)
 ##
 ## Powershell script that generates a TXT file with security related information about a specific host.
-## RUN WITH ADMINISTRATIVE PRIVILEGES
+## Needs to run with administrative privileges
 ## 
 ## Steps:
 ## 1. Run "Windows PowerShell" app "as Administrator" from Windows start menu
@@ -39,11 +40,20 @@ While (!$outputdir) {
     $outputdir = ($application.BrowseForFolder(0, 'Host-based Security Info Collector: where do you want to store HSIC-output.txt?', 0)).Self.Path 
 }
 
-$file = 'HSIC-output.txt'
+$runtime = Get-Date -Format "yyyyMMdd_HHmm"
+$file = 'HSIC-output-' + $runtime + '.txt'
 
 $filename = "$outputdir\$file"
 Set-Content -Path $filename -Value "Host-based Security Info Collector"
-Add-Content -Path $filename $(Get-Date -Format "dddd dd/MM/yyyy HH:mm K")
+Add-Content -Path $filename $(Get-Date -Format "yyyy/MM/dd HH:mm K")
+
+# System identification
+Write-Host "`r`n# Getting System identifiers"
+Add-Content -Path $filename -Value "`r`n###### SYSTEM ID ######"
+Get-WmiObject -Class Win32_Processor -ComputerName. | Select-Object -Property SystemName | Out-String -Width 1000 | Add-Content -Path $filename # System name
+Get-WmiObject -Class Win32_Processor -ComputerName. | Select-Object -Property ProcessorId | Out-String -Width 1000 | Add-Content -Path $filename # CPU ID
+Get-WmiObject -Class Win32_Processor -ComputerName. | Select-Object -Property Name | Out-String -Width 1000 | Add-Content -Path $filename # CPU name
+Get-WmiObject win32_networkadapterconfiguration | Where-Object { $_.MacAddress -ne $null } | Select-Object Description, MacAddress | Out-String -Width 1000 | Add-Content -Path $filename # Get all network adapters with a MacAddress
 
 # Get Antivirus status
 Write-Host "`r`n# Getting Antivirus status"
@@ -84,9 +94,21 @@ Get-WmiObject -Class Win32_Product | Select Name, Version | Out-String -Width 10
 # User status
 Write-Host "`r`n# Getting user information"
 Add-Content -Path $filename -Value "`r`n###### USER INFORMATION ######"
+
+Add-Content -Path $filename -Value "`r`n# All known users:"
 Get-LocalUser | Select Name, Enabled | Out-String -Width 1000 | Add-Content -Path $filename
+
+Add-Content -Path $filename -Value "`r`n# Users with Admin privileges:"
 Get-LocalGroupMember -Group "Administrators" | Out-String -Width 1000 | Add-Content -Path $filename
-[Security.Principal.WindowsIdentity]::GetCurrent().Name | Out-String -Width 1000 | Add-Content -Path $filename
+
+Add-Content -Path $filename -Value "`r`n# Current logged in users:"
+Get-WmiObject -Class Win32_Process -Filter "Name='explorer.exe'" | ForEach-Object { $_.GetOwner().User } | Out-String -Width 1000 | Add-Content -Path $filename
+
+Add-Content -Path $filename -Value "`r`n# User running this script:"
+$identity = [System.Security.Principal.WindowsIdentity]::GetCurrent()
+$principal = New-Object System.Security.Principal.WindowsPrincipal($identity)
+$loggedInUser = $principal.Identity.Name
+$loggedInUser | Out-String -Width 1000 | Add-Content -Path $filename
 
 # Finished
 Write-Host "`r`n# Finished"
