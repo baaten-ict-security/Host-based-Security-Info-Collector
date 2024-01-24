@@ -1,6 +1,6 @@
 ##########################################################################################################
 ## HSIC: Host-based Security Info Collector
-## Version: 2.1 (20240124)
+## Version: 2.2 (20240124)
 ## Author: Dennis Baaten (Baaten ICT Security)
 ##
 #### DISCRIPTION
@@ -26,6 +26,9 @@
 ##    * some simplifications
 ##    * created a workaround for this long existing bug: https://github.com/PowerShell/PowerShell/issues/2996
 ##    * converted from WMI to CIM cmdlet to circumvent strange issue that occurs on some systems when getting the 'currently logged in users'
+## 2.2:	
+##    * since this is a script that feeds an interactive commandline: load functions before use.
+##
 ##########################################################################################################
 
 # Present elevation prompt to run with administrative privileges
@@ -46,90 +49,6 @@ if ((Test-Admin) -eq $false)  {
 }
 
 Clear
-
-# Let user select output directory
-$application = New-Object -ComObject Shell.Application
-While (!$outputdir) {
-    $outputdir = ($application.BrowseForFolder(0, 'Host-based Security Info Collector: where do you want to store HSIC-output.txt?', 0)).Self.Path 
-}
-
-$runtime = Get-Date -Format "yyyyMMdd_HHmm"
-$file = 'HSIC-output-' + $runtime + '.txt'
-
-$filename = "$outputdir\$file"
-Set-Content -Path $filename -Value "Host-based Security Info Collector"
-Add-Content -Path $filename $(Get-Date -Format "yyyy/MM/dd HH:mm K")
-
-# System identification
-Write-Host "`r`n# Getting System identifiers"
-Add-Content -Path $filename -Value "`r`n###### SYSTEM IDENTIFICATION ######"
-$env:COMPUTERNAME | Out-String -Width 1000 | Add-Content -Path $filename # System name
-wmic path win32_Processor get DeviceID,Name,ProcessorID,Caption | Out-String -Width 1000 | Add-Content -Path $filename # CPU Info
-Get-WmiObject win32_networkadapterconfiguration | Where-Object { $_.MacAddress -ne $null } | Select-Object Description, MacAddress | Out-String -Width 1000 | Add-Content -Path $filename # Get all network adapters with a MacAddress
-
-# Get Antivirus status
-Write-Host "`r`n# Getting Antivirus status"
-Add-Content -Path $filename -Value "`r`n###### ANTIVIRUS ######"
-Get-WmiObject -Namespace root\SecurityCenter2 -Class AntiVirusProduct | Select displayName, productState, instanceGUID | Out-String -Width 1000 | Add-Content -Path $filename
-
-# Get Windows Firewall status (not third party) 
-Write-Host "`r`n# Getting firewall status"
-Add-Content -Path $filename -Value "`r`n###### WINDOWS FIREWALL STATUS ######"
-(Get-NetFirewallProfile) | Out-String -Width 1000 | Add-Content -Path $filename
-# Get Firewall products (including third party)
-Add-Content -Path $filename -Value "`r`n###### FIREWALL PRODUCTS ######"
-Get-WmiObject -Namespace root\SecurityCenter2 -Class FirewallProduct | Select displayName, productState, instanceGUID | Out-String -Width 1000 | Add-Content -Path $filename
-
-# Get Bitlocker status
-Write-Host "`r`n# Getting Bitlocker status"
-Add-Content -Path $filename -Value "`r`n###### BITLOCKER ######"
-manage-bde -status | Add-Content -Path $filename
-
-# Get Operating System status
-Write-Host "`r`n# Getting OS information"
-Add-Content -Path $filename -Value "`r`n###### OPERATING SYSTEM ######"
-(Get-WMIObject win32_operatingsystem) | Select Name | Out-String -Width 1000 | Add-Content -Path $filename
-
-# Get Windows update status
-Write-Host "`r`n# Getting Windows Update Status (takes a while)"
-Add-Content -Path $filename -Value "`r`n###### WINDOWS UPDATE STATUS ######"
-$UpdateSession = New-Object -ComObject Microsoft.Update.Session
-$UpdateSearcher = $UpdateSession.CreateupdateSearcher()
-$Updates = @($UpdateSearcher.Search("IsHidden=0 and IsInstalled=0").Updates)
-$Updates | Select-Object Title, IsMandatory, IsInstalled | Out-String  -Width 1000 | Add-Content -Path $filename
-
-# Get installed software + versions
-Write-Host "`r`n# Getting versions of installed software"
-Add-Content -Path $filename -Value "`r`n###### INSTALLED SOFTWARE + VERSION ######"
-Get-WmiObject -Class Win32_Product | Select Name, Version | Out-String -Width 1000 | Add-Content -Path $filename
-
-# User status
-Write-Host "`r`n# Getting user information"
-Add-Content -Path $filename -Value "`r`n###### USER INFORMATION ######"
-
-Add-Content -Path $filename -Value "`r`n# All known users:"
-Get-LocalUser | Select Name, Enabled | Out-String -Width 1000 | Add-Content -Path $filename
-
-
-Add-Content -Path $filename -Value "`r`n# Users with Admin privileges:"
-Get-LocalAdmins | Out-String -Width 1000 | Add-Content -Path $filename
-
-
-Add-Content -Path $filename -Value "`r`n# Current logged in users:"
-$loggedinuser = Get-CimInstance Win32_Process -Filter "name = 'explorer.exe'"
-Invoke-CimMethod -InputObject $loggedinuser -MethodName GetOwner | Select User | Out-String -Width 1000 | Add-Content -Path $filename
-
-
-Add-Content -Path $filename -Value "`r`n# User running this script:"
-$identity = [System.Security.Principal.WindowsIdentity]::GetCurrent()
-$principal = New-Object System.Security.Principal.WindowsPrincipal($identity)
-$userrunningscript = $principal.Identity.Name
-$userrunningscript | Out-String -Width 1000 | Add-Content -Path $filename
-
-
-# Finished
-Write-Host "`r`n# Finished"
-
 
 # Functions
 function Get-LocalAdmins {
@@ -217,3 +136,82 @@ function Convert-AzureAdSidToObjectId {
 
     return $guid
 }
+
+# Let user select output directory
+$application = New-Object -ComObject Shell.Application
+While (!$outputdir) {
+    $outputdir = ($application.BrowseForFolder(0, 'Host-based Security Info Collector: where do you want to store HSIC-output.txt?', 0)).Self.Path 
+}
+
+$runtime = Get-Date -Format "yyyyMMdd_HHmm"
+$file = 'HSIC-output-' + $runtime + '.txt'
+
+$filename = "$outputdir\$file"
+Set-Content -Path $filename -Value "Host-based Security Info Collector"
+Add-Content -Path $filename $(Get-Date -Format "yyyy/MM/dd HH:mm K")
+
+# System identification
+Write-Host "`r`n# Getting System identifiers"
+Add-Content -Path $filename -Value "`r`n###### SYSTEM IDENTIFICATION ######"
+$env:COMPUTERNAME | Out-String -Width 1000 | Add-Content -Path $filename # System name
+wmic path win32_Processor get DeviceID,Name,ProcessorID,Caption | Out-String -Width 1000 | Add-Content -Path $filename # CPU Info
+Get-WmiObject win32_networkadapterconfiguration | Where-Object { $_.MacAddress -ne $null } | Select-Object Description, MacAddress | Out-String -Width 1000 | Add-Content -Path $filename # Get all network adapters with a MacAddress
+
+# Get Antivirus status
+Write-Host "`r`n# Getting Antivirus status"
+Add-Content -Path $filename -Value "`r`n###### ANTIVIRUS ######"
+Get-WmiObject -Namespace root\SecurityCenter2 -Class AntiVirusProduct | Select displayName, productState, instanceGUID | Out-String -Width 1000 | Add-Content -Path $filename
+
+# Get Windows Firewall status (not third party) 
+Write-Host "`r`n# Getting firewall status"
+Add-Content -Path $filename -Value "`r`n###### WINDOWS FIREWALL STATUS ######"
+(Get-NetFirewallProfile) | Out-String -Width 1000 | Add-Content -Path $filename
+# Get Firewall products (including third party)
+Add-Content -Path $filename -Value "`r`n###### FIREWALL PRODUCTS ######"
+Get-WmiObject -Namespace root\SecurityCenter2 -Class FirewallProduct | Select displayName, productState, instanceGUID | Out-String -Width 1000 | Add-Content -Path $filename
+
+# Get Bitlocker status
+Write-Host "`r`n# Getting Bitlocker status"
+Add-Content -Path $filename -Value "`r`n###### BITLOCKER ######"
+manage-bde -status | Add-Content -Path $filename
+
+# Get Operating System status
+Write-Host "`r`n# Getting OS information"
+Add-Content -Path $filename -Value "`r`n###### OPERATING SYSTEM ######"
+(Get-WMIObject win32_operatingsystem) | Select Name | Out-String -Width 1000 | Add-Content -Path $filename
+
+# Get Windows update status
+Write-Host "`r`n# Getting Windows Update Status (takes a while)"
+Add-Content -Path $filename -Value "`r`n###### WINDOWS UPDATE STATUS ######"
+$UpdateSession = New-Object -ComObject Microsoft.Update.Session
+$UpdateSearcher = $UpdateSession.CreateupdateSearcher()
+$Updates = @($UpdateSearcher.Search("IsHidden=0 and IsInstalled=0").Updates)
+$Updates | Select-Object Title, IsMandatory, IsInstalled | Out-String  -Width 1000 | Add-Content -Path $filename
+
+# Get installed software + versions
+Write-Host "`r`n# Getting versions of installed software"
+Add-Content -Path $filename -Value "`r`n###### INSTALLED SOFTWARE + VERSION ######"
+Get-WmiObject -Class Win32_Product | Select Name, Version | Out-String -Width 1000 | Add-Content -Path $filename
+
+# User status
+Write-Host "`r`n# Getting user information"
+Add-Content -Path $filename -Value "`r`n###### USER INFORMATION ######"
+
+Add-Content -Path $filename -Value "`r`n# All known users:"
+Get-LocalUser | Select Name, Enabled | Out-String -Width 1000 | Add-Content -Path $filename
+
+Add-Content -Path $filename -Value "`r`n# Users with Admin privileges:"
+Get-LocalAdmins | Out-String -Width 1000 | Add-Content -Path $filename
+
+Add-Content -Path $filename -Value "`r`n# Current logged in users:"
+$loggedinuser = Get-CimInstance Win32_Process -Filter "name = 'explorer.exe'"
+Invoke-CimMethod -InputObject $loggedinuser -MethodName GetOwner | Select User | Out-String -Width 1000 | Add-Content -Path $filename
+
+Add-Content -Path $filename -Value "`r`n# User running this script:"
+$identity = [System.Security.Principal.WindowsIdentity]::GetCurrent()
+$principal = New-Object System.Security.Principal.WindowsPrincipal($identity)
+$userrunningscript = $principal.Identity.Name
+$userrunningscript | Out-String -Width 1000 | Add-Content -Path $filename
+
+# Finished
+Write-Host "`r`n# Finished. Output file stored at:" $filename
