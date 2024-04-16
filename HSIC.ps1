@@ -28,6 +28,9 @@
 ##    * converted from WMI to CIM cmdlet to circumvent strange issue that occurs on some systems when getting the 'currently logged in users'
 ## 2.2:	
 ##    * since this is a script that feeds an interactive commandline: load functions before use.
+## 2.3:
+##    * added screensaver settings
+##    * improved output of current logged in user
 ##
 ##########################################################################################################
 
@@ -204,14 +207,17 @@ Add-Content -Path $filename -Value "`r`n# Users with Admin privileges:"
 Get-LocalAdmins | Out-String -Width 1000 | Add-Content -Path $filename
 
 Add-Content -Path $filename -Value "`r`n# Current logged in users:"
-$loggedinuser = Get-CimInstance Win32_Process -Filter "name = 'explorer.exe'"
-Invoke-CimMethod -InputObject $loggedinuser -MethodName GetOwner | Select User | Out-String -Width 1000 | Add-Content -Path $filename
+$explorerprocesid = Get-CimInstance Win32_Process -Filter "name = 'explorer.exe'"
+(Invoke-CimMethod -InputObject $explorerprocesid -MethodName GetOwner | Select-Object -ExpandProperty User).Trim() | Out-String -Width 1000 | Add-Content -Path $filename
 
 Add-Content -Path $filename -Value "`r`n# User running this script:"
 $identity = [System.Security.Principal.WindowsIdentity]::GetCurrent()
 $principal = New-Object System.Security.Principal.WindowsPrincipal($identity)
 $userrunningscript = $principal.Identity.Name
 $userrunningscript | Out-String -Width 1000 | Add-Content -Path $filename
+
+Add-Content -Path $filename -Value "`r`n# Screensaver settings:"
+Get-Wmiobject win32_desktop | Out-String -Width 1000 | Add-Content -Path $filename
 
 # Finished
 Write-Host "`r`n# Finished. Output file stored at:" $filename
