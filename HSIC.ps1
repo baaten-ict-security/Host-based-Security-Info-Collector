@@ -1,6 +1,6 @@
 ##########################################################################################################
 ## HSIC: Host-based Security Info Collector
-## Version: 2.2 (20240124)
+## Version: 2.3 (20240416)
 ## Author: Dennis Baaten (Baaten ICT Security)
 ##
 #### DISCRIPTION
