@@ -1,6 +1,6 @@
 ##########################################################################################################
 ## HSIC: Host-based Security Info Collector
-## Version: 2.3 (20240416)
+## Version: 2.4 (20240624)
 ## Author: Dennis Baaten (Baaten ICT Security)
 ##
 #### DISCRIPTION
@@ -31,7 +31,8 @@
 ## 2.3:
 ##    * added screensaver settings
 ##    * improved output of current logged in user
-##
+## 2.4:
+##    * fixed issue with getting 'current logged in users' 
 ##########################################################################################################
 
 # Present elevation prompt to run with administrative privileges
@@ -207,8 +208,7 @@ Add-Content -Path $filename -Value "`r`n# Users with Admin privileges:"
 Get-LocalAdmins | Out-String -Width 1000 | Add-Content -Path $filename
 
 Add-Content -Path $filename -Value "`r`n# Current logged in users:"
-$explorerprocesid = Get-CimInstance Win32_Process -Filter "name = 'explorer.exe'"
-(Invoke-CimMethod -InputObject $explorerprocesid -MethodName GetOwner | Select-Object -ExpandProperty User).Trim() | Out-String -Width 1000 | Add-Content -Path $filename
+Get-WmiObject Win32_Process | Where-Object { $_.Name -eq "explorer.exe" } | ForEach-Object { $_.GetOwner() } | Select-Object -ExpandProperty User | Out-String -Width 1000 | Add-Content -Path $filename
 
 Add-Content -Path $filename -Value "`r`n# User running this script:"
 $identity = [System.Security.Principal.WindowsIdentity]::GetCurrent()
