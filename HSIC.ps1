@@ -1,6 +1,6 @@
 ##########################################################################################################
 ## HSIC: Host-based Security Info Collector
-## Version: 2.4 (20240624)
+## Version: 2.5 (20240624)
 ## Author: Dennis Baaten (Baaten ICT Security)
 ##
 #### DISCRIPTION
@@ -33,6 +33,9 @@
 ##    * improved output of current logged in user
 ## 2.4:
 ##    * fixed issue with getting 'current logged in users' 
+## 2.5:
+##    * device identification now shows if system is a laptop or desktop
+##	  * version of this script is now added to the TXT file
 ##########################################################################################################
 
 # Present elevation prompt to run with administrative privileges
@@ -151,15 +154,24 @@ $runtime = Get-Date -Format "yyyyMMdd_HHmm"
 $file = 'HSIC-output-' + $runtime + '.txt'
 
 $filename = "$outputdir\$file"
-Set-Content -Path $filename -Value "Host-based Security Info Collector"
+Set-Content -Path $filename -Value "Host-based Security Info Collector v2.5"
 Add-Content -Path $filename $(Get-Date -Format "yyyy/MM/dd HH:mm K")
 
 # System identification
 Write-Host "`r`n# Getting System identifiers"
 Add-Content -Path $filename -Value "`r`n###### SYSTEM IDENTIFICATION ######"
-$env:COMPUTERNAME | Out-String -Width 1000 | Add-Content -Path $filename # System name
-wmic path win32_Processor get DeviceID,Name,ProcessorID,Caption | Out-String -Width 1000 | Add-Content -Path $filename # CPU Info
+$env:COMPUTERNAME | Out-String -Width 1000 | Add-Content -Path $filename -NoNewline #System name
+
+$batteries = Get-WmiObject -Class Win32_Battery
+if ($batteries.Count -gt 0) {
+    Add-Content -Path $filename -Value "Device is a laptop`r`n"
+} else {
+    Add-Content -Path $filename -Value "Device is a desktop`r`n"
+}
+
+wmic path win32_Processor get DeviceID,Name,ProcessorID,Caption | Out-String -Width 1000 | Add-Content -Path $filename -NoNewline # CPU Info
 Get-WmiObject win32_networkadapterconfiguration | Where-Object { $_.MacAddress -ne $null } | Select-Object Description, MacAddress | Out-String -Width 1000 | Add-Content -Path $filename # Get all network adapters with a MacAddress
+
 
 # Get Antivirus status
 Write-Host "`r`n# Getting Antivirus status"
