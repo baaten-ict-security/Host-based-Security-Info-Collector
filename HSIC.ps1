@@ -1,6 +1,6 @@
 ##########################################################################################################
 ## HSIC: Host-based Security Info Collector
-## Version: 2.5 (20240703)
+## Version: 2.6 (20240925)
 ## Author: Dennis Baaten (Baaten ICT Security)
 ##
 #### DISCRIPTION
@@ -35,7 +35,9 @@
 ##    * fixed issue with getting 'current logged in users' 
 ## 2.5:
 ##    * device identification now shows if system is a laptop or desktop
-##	  * version of this script is now added to the TXT file
+##    * version of this script is now added to the TXT file
+## 2.6:
+##    * added web filtering check for browsers: Firefox (Safe Browsing), Chrome (Safe Browsing), Edge (SmartScreen).
 ##########################################################################################################
 
 # Present elevation prompt to run with administrative privileges
@@ -154,7 +156,7 @@ $runtime = Get-Date -Format "yyyyMMdd_HHmm"
 $file = 'HSIC-output-' + $runtime + '.txt'
 
 $filename = "$outputdir\$file"
-Set-Content -Path $filename -Value "Host-based Security Info Collector v2.5"
+Set-Content -Path $filename -Value "Host-based Security Info Collector v2.6"
 Add-Content -Path $filename $(Get-Date -Format "yyyy/MM/dd HH:mm K")
 
 # System identification
@@ -231,5 +233,141 @@ $userrunningscript | Out-String -Width 1000 | Add-Content -Path $filename
 Add-Content -Path $filename -Value "`r`n# Screensaver settings:"
 Get-Wmiobject win32_desktop | Out-String -Width 1000 | Add-Content -Path $filename
 
+# Web filtering
+Write-Host "`r`n# Getting browser related information"
+Add-Content -Path $filename -Value "`r`n###### BROWSER INFORMATION ######"
+
+Add-Content -Path $filename -Value "`r`n# Browser web filter settings:"
+# First create a PowerShell drive for HKU (HKEY_USERS) if not exists
+if (-Not (Test-Path -Path "HKU:\"))
+{
+    New-PSDrive -PSProvider Registry -Name HKU -Root HKEY_USERS
+}
+
+# Get the list of currently logged-in users' processes.
+$processes = Get-WmiObject Win32_Process -Filter "Name = 'explorer.exe'"
+foreach ($process in $processes) 
+{
+    # Get the username and domain for each process.
+    $usersid = $process.GetOwnerSid() | Select-Object -ExpandProperty Sid
+    $username = $process.GetOwner() | Select-Object -ExpandProperty User
+    $wmiUser = Get-WmiObject -Query "SELECT * FROM Win32_UserProfile WHERE SID = '$usersid'"
+    if ($wmiUser)
+    {
+        $userDirectory = $wmiUser.LocalPath
+        
+        # Get the user's profiles location for supported browsers
+        $firefoxProfilesLocation = "$userDirectory\AppData\Roaming\Mozilla\Firefox\Profiles"
+        $chromeDataPath = "$userDirectory\AppData\Local\Google\Chrome\User Data"
+        
+        ## Firefox (Safe Browsing)
+        if (Test-Path -Path $firefoxProfilesLocation) 
+        {
+            # Get the list of profile directories
+            $profileDirectories = Get-ChildItem $firefoxProfilesLocation -Directory
+    
+            # Iterate over each profile directory
+            foreach ($directory in $profileDirectories)
+            {
+                # Full path of the prefs.js inside current directory
+                $prefsFilePath = Join-Path -Path $directory.FullName -ChildPath "prefs.js" 
+            
+                if (Test-Path -Path $prefsFilePath)
+                {
+                    # Read the content of prefs.js
+                    $prefsFileContent = Get-Content -Path $prefsFilePath
+                    
+                    # Check if the safe browsing entry exists and set to false
+                    $safeBrowsingMalwareDisabled = $prefsFileContent -match 'user_pref\("browser.safebrowsing.malware.enabled", false\);'
+                    $safeBrowsingPhishingDisabled = $prefsFileContent -match 'user_pref\("browser.safebrowsing.phishing.enabled", false\);'
+    
+                    if ($safeBrowsingMalwareDisabled)
+                    {
+                        Add-Content -Path $filename -Value "[Firefox] Safe browsing for malware is disabled for `"$username`" in $prefsFilePath"
+                    }
+                    else
+                    {
+                        Add-Content -Path $filename -Value "[Firefox] Safe browsing for malware is enabled or not set for `"$username`" in $prefsFilePath"
+                    }
+
+                    if ($safeBrowsingPhishingDisabled)
+                    {
+                        Add-Content -Path $filename -Value "[Firefox] Safe browsing for phishing is disabled for `"$username`" in $prefsFilePath"
+                    }
+                    else
+                    {
+                        Add-Content -Path $filename -Value "[Firefox] Safe browsing for phishing is enabled or not set for `"$username`" in $prefsFilePath"
+                    }
+                }
+                else
+                {
+                    Add-Content -Path $filename -Value "[Firefox] Could not find prefs.js file for `"$username`" in $directory"
+                }
+            } 
+        }
+        else
+        { 
+            Add-Content -Path $filename -Value "[Firefox] Could not find a profiles directory for `"$username`" in default location (not installed)"
+        }
+
+        ## Chrome (Safe Browsing)
+        if (Test-Path -Path $chromeDataPath) 
+        {
+            $chromeProfileDirs = Get-ChildItem $chromeDataPath -Directory | Where-Object { $_.Name -eq "Default" -or $_.Name -like "Profile *" }
+
+            foreach ($chromeProfileDir in $chromeProfileDirs)
+            {
+                # Full path of the Preferences file inside current directory
+                $chromePrefsFilePath = Join-Path -Path $chromeProfileDir.FullName -ChildPath "Preferences" 
+
+                if (Test-Path -Path $chromePrefsFilePath)
+                {
+                    # Read the content of prefs.js
+                    $chromePrefsFileContent = Get-Content -Path $chromePrefsFilePath -Raw | ConvertFrom-Json
+                                                              
+                    if ($chromePrefsFileContent.safebrowsing.enabled -eq "False")
+                    {
+                        Add-Content -Path $filename -Value "[Chrome] Safe browsing is disabled for `"$username`" in $chromePrefsFilePath"
+                    }
+                    else
+                    {
+                        Add-Content -Path $filename -Value "[Chrome] Safe browsing is enabled for `"$username`" in $chromePrefsFilePath"
+                    }
+                }
+                else
+                {
+                    Add-Content -Path $filename -Value "[Chrome] Could not find Preferences file for `"$username`" in $chromeProfileDir"
+                }
+            }
+        }
+        else
+        { 
+            Add-Content -Path $filename -Value "[Chrome] Could not find a profiles directory for `"$username`" in default location (not installed)"
+        }
+
+
+        ## Edge (Microsoft Defender SmartScreen)
+        $registrypath = "HKU:\" + $usersid + "\Software\Microsoft\Edge\SmartScreenEnabled"
+        $edgeSmartScreenStatus = Get-ItemPropertyValue "$registrypath" -Name "(Default)"
+
+        if ($edgeSmartScreenStatus)
+        {
+            
+            if ($edgeSmartScreenStatus -eq "0")
+            {
+                Add-Content -Path $filename -Value "[Edge] Safe Browsing is disabled for `"$username`" in registry setting $registrypath"
+            }
+            else
+            {
+                Add-Content -Path $filename -Value "[Edge] Safe Browsing is enabled for `"$username`" in registry setting $registrypath"
+            }
+        }
+        else
+        {
+            Add-Content -Path $filename -Value "[Edge] Registry key for Safe Browsing $registrypath not found"
+        }
+
+    }
+}
 # Finished
 Write-Host "`r`n# Finished. Output file stored at:" $filename
