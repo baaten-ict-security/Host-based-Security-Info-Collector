@@ -38,6 +38,7 @@
 ##    * version of this script is now added to the TXT file
 ## 2.6:
 ##    * added web filtering check for browsers: Firefox (Safe Browsing), Chrome (Safe Browsing), Edge (SmartScreen).
+##    * fixed bug in laptop/desktop detection
 ##########################################################################################################
 
 # Present elevation prompt to run with administrative privileges
@@ -165,7 +166,7 @@ Add-Content -Path $filename -Value "`r`n###### SYSTEM IDENTIFICATION ######"
 $env:COMPUTERNAME | Out-String -Width 1000 | Add-Content -Path $filename -NoNewline #System name
 
 $batteries = Get-WmiObject -Class Win32_Battery
-if ($batteries.Count -gt 0) {
+if ($batteries) {
     Add-Content -Path $filename -Value "Device is a laptop`r`n"
 } else {
     Add-Content -Path $filename -Value "Device is a desktop`r`n"
