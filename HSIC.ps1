@@ -242,7 +242,7 @@ Add-Content -Path $filename -Value "`r`n# Browser web filter settings:"
 # First create a PowerShell drive for HKU (HKEY_USERS) if not exists
 if (-Not (Test-Path -Path "HKU:\"))
 {
-    New-PSDrive -PSProvider Registry -Name HKU -Root HKEY_USERS
+    New-PSDrive -PSProvider Registry -Name HKU -Root HKEY_USERS | out-null
 }
 
 # Get the list of currently logged-in users' processes.
