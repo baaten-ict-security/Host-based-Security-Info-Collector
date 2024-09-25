@@ -302,7 +302,7 @@ foreach ($process in $processes)
                 }
                 else
                 {
-                    Add-Content -Path $filename -Value "[Firefox] Could not find $prefsFilePath file for `"$username`""
+                    Add-Content -Path $filename -Value "[Firefox] Could not find prefs.js file in for `"$username`" in $directory.FullName"
                 }
             } 
         }
