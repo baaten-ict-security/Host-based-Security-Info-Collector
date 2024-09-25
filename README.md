@@ -1,5 +1,6 @@
-# Host-based-Security-Info-Collector
-Powershell script that generates a TXT file with security related information about a specific host.
+# Host-based Security Info Collector (HSIC)
+Powershell script that generates a TXT file with security related information about a specific host. Usefull for audits or for proving BYOD compliance with ISO 27001:2022 controls.
+Big advantage of the TXT file output, is that it is totally tranparent to the users which information about his/her system is collected.
 
 Steps:
 1. Run "Windows PowerShell" app "as Administrator" from Windows start menu
