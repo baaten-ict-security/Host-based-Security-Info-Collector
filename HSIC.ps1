@@ -1,6 +1,6 @@
 ##########################################################################################################
 ## HSIC: Host-based Security Info Collector
-## Version: 2.6 (20240925)
+## Version: 2.7 (20250623)
 ## Author: Dennis Baaten (Baaten ICT Security)
 ##
 #### DISCRIPTION
@@ -39,6 +39,10 @@
 ## 2.6:
 ##    * added web filtering check for browsers: Firefox (Safe Browsing), Chrome (Safe Browsing), Edge (SmartScreen).
 ##    * fixed bug in laptop/desktop detection
+## 2.7:
+##	  * Microsoft has deprecated the WMI command line (WMIC) utility. All uses of WMIC have been replaced with Get-CimInstance.
+##    * Microsoft favors Get-CimInstance over Get-WmiObject. Most uses of Get-WmiObject have been replaced with Get-CimInstance, except for situations that use the GetOwner or GetOwnerSid methods since these are not supported by Get-CimInstance. 
+##    * Deprecated the use of Win32_Product method since this triggers a consistency check and reconfiguration of all MSI-installed applications. Installed applications are now obtained from the registry.
 ##########################################################################################################
 
 # Present elevation prompt to run with administrative privileges
@@ -157,7 +161,7 @@ $runtime = Get-Date -Format "yyyyMMdd_HHmm"
 $file = 'HSIC-output-' + $runtime + '.txt'
 
 $filename = "$outputdir\$file"
-Set-Content -Path $filename -Value "Host-based Security Info Collector v2.6"
+Set-Content -Path $filename -Value "Host-based Security Info Collector v2.7"
 Add-Content -Path $filename $(Get-Date -Format "yyyy/MM/dd HH:mm K")
 
 # System identification
@@ -165,21 +169,22 @@ Write-Host "`r`n# Getting System identifiers"
 Add-Content -Path $filename -Value "`r`n###### SYSTEM IDENTIFICATION ######"
 $env:COMPUTERNAME | Out-String -Width 1000 | Add-Content -Path $filename -NoNewline #System name
 
-$batteries = Get-WmiObject -Class Win32_Battery
+$batteries = Get-CimInstance -ClassName Win32_Battery
 if ($batteries) {
     Add-Content -Path $filename -Value "Device is a laptop`r`n"
 } else {
     Add-Content -Path $filename -Value "Device is a desktop`r`n"
 }
 
-wmic path win32_Processor get DeviceID,Name,ProcessorID,Caption | Out-String -Width 1000 | Add-Content -Path $filename -NoNewline # CPU Info
-Get-WmiObject win32_networkadapterconfiguration | Where-Object { $_.MacAddress -ne $null } | Select-Object Description, MacAddress | Out-String -Width 1000 | Add-Content -Path $filename # Get all network adapters with a MacAddress
+Get-CimInstance Win32_Processor | Select-Object DeviceID, Name, ProcessorID, Caption | Out-String -Width 1000 | Add-Content -Path $filename -NoNewline # CPU Info
+Get-CimInstance Win32_NetworkAdapterConfiguration | Where-Object { $_.MacAddress -ne $null } | Select-Object Description, MacAddress | Out-String -Width 1000 | Add-Content -Path $filename  # Get all network adapters with a MacAddress
+
 
 
 # Get Antivirus status
 Write-Host "`r`n# Getting Antivirus status"
 Add-Content -Path $filename -Value "`r`n###### ANTIVIRUS ######"
-Get-WmiObject -Namespace root\SecurityCenter2 -Class AntiVirusProduct | Select displayName, productState, instanceGUID | Out-String -Width 1000 | Add-Content -Path $filename
+Get-CimInstance -Namespace root/SecurityCenter2 -ClassName AntiVirusProduct | Select-Object displayName, productState, instanceGUID | Out-String -Width 1000 | Add-Content -Path $filename
 
 # Get Windows Firewall status (not third party) 
 Write-Host "`r`n# Getting firewall status"
@@ -187,7 +192,7 @@ Add-Content -Path $filename -Value "`r`n###### WINDOWS FIREWALL STATUS ######"
 (Get-NetFirewallProfile) | Out-String -Width 1000 | Add-Content -Path $filename
 # Get Firewall products (including third party)
 Add-Content -Path $filename -Value "`r`n###### FIREWALL PRODUCTS ######"
-Get-WmiObject -Namespace root\SecurityCenter2 -Class FirewallProduct | Select displayName, productState, instanceGUID | Out-String -Width 1000 | Add-Content -Path $filename
+Get-CimInstance -Namespace root/SecurityCenter2 -ClassName FirewallProduct | Select-Object displayName, productState, instanceGUID | Out-String -Width 1000 | Add-Content -Path $filename
 
 # Get Bitlocker status
 Write-Host "`r`n# Getting Bitlocker status"
@@ -197,7 +202,7 @@ manage-bde -status | Add-Content -Path $filename
 # Get Operating System status
 Write-Host "`r`n# Getting OS information"
 Add-Content -Path $filename -Value "`r`n###### OPERATING SYSTEM ######"
-(Get-WMIObject win32_operatingsystem) | Select Name | Out-String -Width 1000 | Add-Content -Path $filename
+Get-CimInstance -ClassName Win32_OperatingSystem | Select-Object Name | Out-String -Width 1000 | Add-Content -Path $filename
 
 # Get Windows update status
 Write-Host "`r`n# Getting Windows Update Status (takes a while)"
@@ -210,7 +215,7 @@ $Updates | Select-Object Title, IsMandatory, IsInstalled | Out-String  -Width 10
 # Get installed software + versions
 Write-Host "`r`n# Getting versions of installed software"
 Add-Content -Path $filename -Value "`r`n###### INSTALLED SOFTWARE + VERSION ######"
-Get-WmiObject -Class Win32_Product | Select Name, Version | Out-String -Width 1000 | Add-Content -Path $filename
+Get-ItemProperty HKLM:\Software\Wow6432Node\Microsoft\Windows\CurrentVersion\Uninstall\* , HKLM:\Software\Microsoft\Windows\CurrentVersion\Uninstall\* | Where-Object { $_.DisplayName } | Select-Object DisplayName, DisplayVersion | Out-String -Width 1000 | Add-Content -Path $filename
 
 # User status
 Write-Host "`r`n# Getting user information"
@@ -232,7 +237,7 @@ $userrunningscript = $principal.Identity.Name
 $userrunningscript | Out-String -Width 1000 | Add-Content -Path $filename
 
 Add-Content -Path $filename -Value "`r`n# Screensaver settings:"
-Get-Wmiobject win32_desktop | Out-String -Width 1000 | Add-Content -Path $filename
+Get-CimInstance -ClassName Win32_Desktop | Out-String -Width 1000 | Add-Content -Path $filename
 
 # Web filtering
 Write-Host "`r`n# Getting browser related information"
@@ -252,10 +257,10 @@ foreach ($process in $processes)
     # Get the username and domain for each process.
     $usersid = $process.GetOwnerSid() | Select-Object -ExpandProperty Sid
     $username = $process.GetOwner() | Select-Object -ExpandProperty User
-    $wmiUser = Get-WmiObject -Query "SELECT * FROM Win32_UserProfile WHERE SID = '$usersid'"
-    if ($wmiUser)
+	$tempUser = Get-CimInstance -Query "SELECT * FROM Win32_UserProfile WHERE SID = '$usersid'"
+    if ($tempUser)
     {
-        $userDirectory = $wmiUser.LocalPath
+        $userDirectory = $tempUser.LocalPath
         
         # Get the user's profiles location for supported browsers
         $firefoxProfilesLocation = "$userDirectory\AppData\Roaming\Mozilla\Firefox\Profiles"
